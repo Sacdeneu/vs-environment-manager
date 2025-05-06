@@ -1,0 +1,12 @@
+﻿<Window x:Class="VsEnvironmentManager.AddVariableDialog"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        Title="Ajouter une variable" Height="150" Width="300" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="10">
+        <TextBlock Text="Nom de la variable:"/>
+        <TextBox x:Name="NameTextBox" Margin="0,0,0,8"/>
+        <TextBlock Text="Valeur:"/>
+        <TextBox x:Name="ValueTextBox" Margin="0,0,0,8"/>
+        <Button Content="OK" Width="60" HorizontalAlignment="Right" Click="OkButton_Click"/>
+    </StackPanel>
+</Window>

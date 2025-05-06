@@ -185,3 +185,6 @@ $RECYCLE.BIN/
 # VS Code
 .vscode/
 .history/
+
+/vs-environment-manager/.vs
+/VsEnvironmentManager/.vs

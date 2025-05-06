@@ -1,0 +1,123 @@
+﻿<UserControl x:Class="VsEnvironmentManager.EnvironmentManagerToolWindowControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="500" MinHeight="300"
+             Background="#222">
+    <UserControl.Resources>
+    </UserControl.Resources>
+    <Grid>
+        <Button x:Name="SwitchViewButton"
+                Content="Vue projet"
+                Width="110"
+                Height="28"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,10,10,0"
+                Click="SwitchViewButton_Click"
+                ToolTip="Basculer entre la vue solution et la vue projet"/>
+
+        <ScrollViewer x:Name="SolutionScrollViewer"
+              Margin="10,50,10,10"
+              VerticalScrollBarVisibility="Auto"
+              Background="Transparent">
+            <Grid x:Name="SolutionStackPanel">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <!-- En-tête environnement courant -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Grid.Row="0">
+                    <TextBlock Text="Environnement : " FontWeight="Bold" Foreground="#BBB"/>
+                    <TextBlock x:Name="SolutionEnvironmentNameText" Foreground="#FFF"/>
+                </StackPanel>
+                <TreeView x:Name="SolutionTreeView"
+                  Grid.Row="1"
+                  ItemsSource="{Binding Projects}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Margin="0"
+                  Padding="2">
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate ItemsSource="{Binding Variables}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2,0,2">
+                                <TextBlock Text="{Binding ProjectName}" FontWeight="Bold" Foreground="#8EC7FF" Margin="0,0,10,0"/>
+                                <Button Content="+" Width="22" Height="22"
+                                Tag="{Binding}"
+                                Click="AddVariableToProjectPopup_Click"
+                                ToolTip="Ajouter une variable à ce projet"/>
+                            </StackPanel>
+                            <HierarchicalDataTemplate.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="20,2,0,0">
+                                        <TextBox Width="80" Margin="0,0,4,0"
+                                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                         Foreground="#FFF" Background="#2A2D32"/>
+                                        <TextBox Width="120" Margin="0,0,4,0"
+                                         Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                         Foreground="#FFF" Background="#2A2D32"/>
+                                        <Button Content="-" Width="24" Height="22"
+                                        Tag="{Binding}"
+                                        Click="DeleteVariableFromProject_Click"
+                                        ToolTip="Supprimer"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </HierarchicalDataTemplate.ItemTemplate>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </Grid>
+        </ScrollViewer>
+
+        <Grid x:Name="ProjectViewPanel" Margin="0" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Margin="10,10,10,0" VerticalAlignment="Top">
+                <TextBlock Text="Projet : " FontWeight="Bold" Foreground="#BBB"/>
+                <TextBlock x:Name="ProjectNameText" Margin="5,0,15,0" Foreground="#FFF"/>
+                <TextBlock Text="Environnement : " FontWeight="Bold" Foreground="#BBB"/>
+                <TextBlock x:Name="EnvironmentNameText" Margin="5,0,0,0" Foreground="#FFF"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,10,10,0">
+                <TextBox x:Name="NewVarName"
+                         Width="80"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         FontWeight="Bold"
+                         ToolTip="Nom"/>
+                <TextBox x:Name="NewVarValue"
+                         Width="120"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Valeur"/>
+                <Button Content="+" Width="28" Height="24"
+                        Click="AddVariable_Click"
+                        ToolTip="Ajouter la variable"/>
+            </StackPanel>
+            <ScrollViewer Margin="10,48,10,10" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="VariablesListView">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="80"
+                                         Margin="0,0,8,0"
+                                         FontWeight="Bold"
+                                         VerticalContentAlignment="Center"/>
+                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="120"
+                                         Margin="0,0,8,0"
+                                         VerticalContentAlignment="Center"/>
+                                <Button Content="-" Width="24" Height="22"
+                                        Margin="0,0,0,0"
+                                        Click="DeleteVariable_Click"
+                                        Tag="{Binding}"
+                                        ToolTip="Supprimer"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>
