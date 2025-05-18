@@ -1,7 +1,9 @@
 ﻿using Microsoft.VisualStudio.Shell;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -119,7 +121,20 @@ namespace VsEnvironmentManager
             if (sender is Button btn && btn.Tag is EnvironmentVariable variable)
             {
                 variables.Remove(variable);
+
+                // Supprime la variable d'environnement système
+                RemoveSystemEnvironmentVariable(variable.Name);
+
                 await SaveCurrentVariablesAsync();
+
+                // Feedback à l'utilisateur
+                MessageBox.Show(
+                    "La variable d'environnement système a été supprimée.\n" +
+                    "⚠️ Vous devez redémarrer Visual Studio pour que la suppression soit prise en compte.",
+                    "Information",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
             }
         }
 
@@ -130,6 +145,32 @@ namespace VsEnvironmentManager
 
             var storage = EnvironmentVariableStorage.Instance;
             await storage.SaveVariablesAsync(projectName, environmentName, variables.ToList());
+
+            // Applique chaque variable dans l'environnement système
+            foreach (var v in variables)
+                SetSystemEnvironmentVariable(v.Name, v.Value);
+
+            // Affiche un feedback
+            MessageBox.Show(
+                "Les variables d'environnement système ont été modifiées.\n" +
+                "⚠️ Vous devez redémarrer Visual Studio pour que les changements soient pris en compte dans vos projets.",
+                "Information",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+        }
+        private void SetSystemEnvironmentVariable(string name, string value)
+        {
+            try
+            {
+                // Ajoute ou modifie la variable pour l'utilisateur courant
+                Environment.SetEnvironmentVariable(name, value, EnvironmentVariableTarget.User);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de la modification de la variable d'environnement système : {ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
 
@@ -148,6 +189,18 @@ namespace VsEnvironmentManager
                 }
             }
         }
+        private void RemoveSystemEnvironmentVariable(string name)
+        {
+            try
+            {
+                Environment.SetEnvironmentVariable(name, null, EnvironmentVariableTarget.User);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de la suppression de la variable d'environnement système : {ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
 
         private async void DeleteVariableFromProject_Click(object sender, RoutedEventArgs e)
         {
@@ -158,7 +211,20 @@ namespace VsEnvironmentManager
                     if (proj.Variables.Contains(variable))
                     {
                         proj.Variables.Remove(variable);
+
+                        // Supprime la variable d'environnement système
+                        RemoveSystemEnvironmentVariable(variable.Name);
+
                         await SaveProjectVariablesAsync(proj);
+
+                        // Feedback à l'utilisateur
+                        MessageBox.Show(
+                            "La variable d'environnement système a été supprimée.\n" +
+                            "⚠️ Vous devez redémarrer Visual Studio pour que la suppression soit prise en compte.",
+                            "Information",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information
+                        );
                         break;
                     }
                 }
@@ -170,6 +236,19 @@ namespace VsEnvironmentManager
             var storage = EnvironmentVariableStorage.Instance;
             string envName = GetCurrentEnvironmentName();
             await storage.SaveVariablesAsync(proj.ProjectName, envName, proj.Variables.ToList());
+
+            // Ajoute ceci pour mettre à jour les variables d'environnement système
+            foreach (var v in proj.Variables)
+                SetSystemEnvironmentVariable(v.Name, v.Value);
+
+            // Affiche le feedback à l'utilisateur
+            MessageBox.Show(
+                "Les variables d'environnement système ont été modifiées.\n" +
+                "⚠️ Vous devez redémarrer Visual Studio pour que les changements soient pris en compte dans vos projets.",
+                "Information",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
         }
 
 
@@ -211,6 +290,45 @@ namespace VsEnvironmentManager
                 AddProjectAndSubProjects(project, projects);
             }
             return projects;
+        }
+
+        private void SyncVariablesToLaunchSettings(string projectName, List<EnvironmentVariable> variables)
+        {
+            // Récupère le chemin du projet via DTE
+            var dte = (EnvDTE.DTE)Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(EnvDTE.DTE));
+            EnvDTE.Project project = null;
+            foreach (EnvDTE.Project p in dte.Solution.Projects)
+            {
+                if (p.Name == projectName)
+                {
+                    project = p;
+                    break;
+                }
+            }
+            if (project == null) return;
+
+            string projectDir = Path.GetDirectoryName(project.FullName);
+            string launchSettingsPath = Path.Combine(projectDir, "Properties", "launchSettings.json");
+            if (!File.Exists(launchSettingsPath)) return;
+
+            var json = JObject.Parse(File.ReadAllText(launchSettingsPath));
+            var profiles = json["profiles"] as JObject;
+            if (profiles == null) return;
+
+            foreach (var profile in profiles.Properties())
+            {
+                var envVars = profile.Value["environmentVariables"] as JObject;
+                if (envVars == null)
+                {
+                    envVars = new JObject();
+                    profile.Value["environmentVariables"] = envVars;
+                }
+                // Ajoute ou met à jour chaque variable
+                foreach (var v in variables)
+                    envVars[v.Name] = v.Value;
+            }
+
+            File.WriteAllText(launchSettingsPath, json.ToString());
         }
 
         private void AddProjectAndSubProjects(EnvDTE.Project project, List<EnvDTE.Project> list)

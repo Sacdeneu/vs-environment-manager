@@ -1,10 +1,7 @@
-﻿using EnvDTE;
-using Microsoft.VisualStudio;
+﻿using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace VsEnvironmentManager
@@ -14,6 +11,7 @@ namespace VsEnvironmentManager
         private readonly EnvironmentVariableStorage _storage;
         private IVsSolutionBuildManager2 _buildManager;
         private uint _updateSolutionEventsCookie;
+        private static bool _isAutoRebuild = false;
 
         public DebugEventHandler(EnvironmentVariableStorage storage)
         {
@@ -54,6 +52,10 @@ namespace VsEnvironmentManager
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
+                // Empêche le rebuild infini
+                if (_isAutoRebuild)
+                    return;
+
                 string projectName = GetActiveProjectName();
                 string environmentName = GetActiveEnvironmentName();
 
@@ -65,10 +67,28 @@ namespace VsEnvironmentManager
                     {
                         ApplyEnvironmentVariable(projectName, variable.Name, variable.Value);
                     }
-                }
-            });
 
-            return 0;
+                    // Déclenche le rebuild après application des variables
+                    _isAutoRebuild = true;
+                    try
+                    {
+                        await Task.Delay(1000); // Petit délai pour éviter les conflits
+                        var dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
+                        dte?.ExecuteCommand("Build.Clean");
+                        dte?.ExecuteCommand("Build.RebuildSolution");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Erreur rebuild : {ex.Message}");
+                    }
+                    finally
+                    {
+                        _isAutoRebuild = false;
+                    }
+                }
+            }).FileAndForget("vs-env-manager-rebuild");
+
+            return VSConstants.S_OK;
         }
 
         public int UpdateSolution_Cancel()
@@ -120,7 +140,7 @@ namespace VsEnvironmentManager
 
             try
             {
-                var dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
+                var dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
                 if (dte?.ActiveSolutionProjects is Array activeSolutionProjects && activeSolutionProjects.Length > 0)
                 {
                     var project = activeSolutionProjects.GetValue(0) as EnvDTE.Project;
@@ -141,8 +161,8 @@ namespace VsEnvironmentManager
 
             try
             {
-                var dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
-                return dte?.Solution.SolutionBuild.ActiveConfiguration.Name;
+                var dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
+                return dte.Solution.Properties.Item("ActiveLaunchProfile").Value.ToString();
             }
             catch (Exception ex)
             {
@@ -155,65 +175,25 @@ namespace VsEnvironmentManager
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            try
+            var dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
+            foreach (EnvDTE.Project project in dte.Solution.Projects)
             {
-                var dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
-
-                foreach (EnvDTE.Project project in dte.Solution.Projects)
+                if (project.Name == projectName)
                 {
-                    if (project.Name == projectName)
+                    // Pour les projets SDK .NET Core
+                    if (project.Kind == "{9A19103F-16F7-4668-BE54-9A1E7A4F7556}")
                     {
-                        var properties = project.Properties;
-                        if (properties == null)
-                            continue;
-
-                        Property envVarsProp = null;
-                        try
-                        {
-                            envVarsProp = properties.Item("EnvironmentVariables");
-                        }
-                        catch
-                        {
-                            System.Diagnostics.Debug.WriteLine("La propriété EnvironmentVariables n'existe pas sur ce projet.");
-                        }
-
-                        if (envVarsProp != null)
-                        {
-                            var envVars = envVarsProp.Value as string ?? "";
-
-                            var envVarsList = new Dictionary<string, string>();
-                            if (!string.IsNullOrEmpty(envVars))
-                            {
-                                var pairs = envVars.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                                foreach (var pair in pairs)
-                                {
-                                    var keyValue = pair.Split(new[] { '=' }, 2);
-                                    if (keyValue.Length == 2)
-                                    {
-                                        envVarsList[keyValue[0]] = keyValue[1];
-                                    }
-                                }
-                            }
-
-                            envVarsList[name] = value;
-
-                            var newEnvVars = string.Join("\n",
-                                envVarsList.Select(kv => $"{kv.Key}={kv.Value}")
-                            );
-
-                            envVarsProp.Value = newEnvVars;
-                            System.Diagnostics.Debug.WriteLine($"Variable d'environnement {name}={value} appliquée au projet {projectName}");
-                        }
-                        else
-                        {
-                        }
-                        break;
+                        var configuration = project.ConfigurationManager.ActiveConfiguration;
+                        configuration.Properties.Item("MSBuildProperties").Value = $"{name}={value};";
                     }
+                    // Pour les anciens projets
+                    else
+                    {
+                        var prop = project.Properties.Item("EnvironmentVariables");
+                        prop.Value = $"{name}={value};{prop.Value}";
+                    }
+                    break;
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Erreur lors de l'application de la variable d'environnement: {ex.Message}");
             }
         }
 
